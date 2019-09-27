@@ -92,7 +92,9 @@ def train(args):
     # Generate the train and validation sets for the model:
     split_train_val(args, per_val=args.per_val)
 
-    exp_name = "1-neightborhood-left_only"
+    nborhood = args.neightborhood
+    exp_name = str(nborhood)
+
 
 
     current_time = datetime.now().strftime('%b%d_%H%M%S')
@@ -376,6 +378,8 @@ if __name__ == '__main__':
                         help='Whether to use data augmentation.')
     parser.add_argument('--class_weights', nargs='?', type=bool, default=False,
                         help='Whether to use class weights to reduce the effect of class imbalance')
+    parser.add_argument('--neightborhood', nargs='?', type=np.array, default=[-1, 0, 1],
+                        help='Choose which neighhtborhood will be added as channels')
 
     args = parser.parse_args()
     train(args)
