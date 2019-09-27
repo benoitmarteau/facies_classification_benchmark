@@ -41,7 +41,7 @@ class patch_loader(data.Dataset):
             # We are in train/val mode. Most likely the test splits are not saved yet, 
             # so don't attempt to load them.  
             for split in ['train', 'val', 'train_val']:
-                # reading the file names for 'train', 'val', 'trainval'""
+                # reading the file names for 'train', 'val', 'train_val'""
                 path = pjoin('data', 'splits', 'patch_' + split + '.txt')
                 patch_list = tuple(open(path, 'r'))
                 # patch_list = [id_.rstrip() for id_ in patch_list]
@@ -76,12 +76,16 @@ class patch_loader(data.Dataset):
         idx, xdx, ddx = int(idx)+shift, int(xdx)+shift, int(ddx)+shift
 
         if direction == 'i':
-            im = self.seismic[idx,xdx:xdx+self.patch_size,ddx:ddx+self.patch_size]
-            lbl = self.labels[idx,xdx:xdx+self.patch_size,ddx:ddx+self.patch_size]
-        elif direction == 'x':    
-            im = self.seismic[idx: idx+self.patch_size, xdx, ddx:ddx+self.patch_size]
+            # im = self.seismic[idx, xdx:xdx + self.patch_size, ddx:ddx + self.patch_size] ### Uncomment for Vanilla ###
+            im = self.seismic[idx-1:idx+1,xdx:xdx+self.patch_size,ddx:ddx+self.patch_size] ### For k-neightborhood ### ### Comment for Vanilla ###
+            im = np.swapaxes(im, 1, 2) ### Transpose ### ### Comment for Vanilla ###
+            lbl = self.labels[idx, xdx:xdx+self.patch_size,ddx:ddx+self.patch_size]
+        elif direction == 'x':
+            # im = self.seismic[idx: idx + self.patch_size, xdx, ddx:ddx + self.patch_size] ### Uncomment for Vanilla ###
+            im = self.seismic[idx: idx+self.patch_size, xdx-1:xdx+1, ddx:ddx+self.patch_size] ### For k-neightborhood ### ### Comment for Vanilla ###
+            im = np.swapaxes(im, 0, 1) ### Comment for Vanilla ###
+            im = np.swapaxes(im, 1, 2) ### Transpose ### ### Comment for Vanilla ###
             lbl = self.labels[idx: idx+self.patch_size, xdx, ddx:ddx+self.patch_size]
-
         if self.augmentations is not None:
             im, lbl = self.augmentations(im, lbl)
             
@@ -94,10 +98,11 @@ class patch_loader(data.Dataset):
         img -= self.mean
 
         # to be in the BxCxHxW that PyTorch uses: 
-        img, lbl = img.T, lbl.T
+        # img, lbl = img.T, lbl.T ### Uncomment for Vanilla ###
+        lbl = lbl.T #Just transpose label (already transposed images) ### Comment for Vanilla ###
 
-        img = np.expand_dims(img,0)
-        lbl = np.expand_dims(lbl,0)
+        # img = np.expand_dims(img,0) ### Uncomment for Vanilla ###
+        lbl = np.expand_dims(lbl, 0)
 
         img = torch.from_numpy(img)
         img = img.float()
@@ -196,11 +201,16 @@ class section_loader(data.Dataset):
         direction, number = section_name.split(sep='_')
 
         if direction == 'i':
-            im = self.seismic[int(number),:,:]
+            # im = self.seismic[int(number), :, :] ### Uncomment for Vanilla ###
+            im = self.seismic[int(number)-1:int(number)+2,:,:] ### add more channels ### ### Comment for Vanilla ###
+            im = np.swapaxes(im, 1, 2)  ### Transpose ### ### Comment for Vanilla ###
             lbl = self.labels[int(number),:,:]
-        elif direction == 'x':    
-            im = self.seismic[:,int(number),:]
+        elif direction == 'x':
+            # im = self.seismic[:, int(number), :] ### Uncomment for Vanilla ###
+            im = self.seismic[:,int(number)-1:int(number)+2,:] ### add more channels ### ### Comment for Vanilla ###
             lbl = self.labels[:,int(number),:]
+            im = np.swapaxes(im, 0, 1) ### Put the number of channels first ### ### Comment for Vanilla ###
+            im = np.swapaxes(im, 1, 2)  ### Transpose ### ### Comment for Vanilla ###
         
         if self.augmentations is not None:
             im, lbl = self.augmentations(im, lbl)
@@ -214,9 +224,10 @@ class section_loader(data.Dataset):
         img -= self.mean
 
         # to be in the BxCxHxW that PyTorch uses: 
-        img, lbl = img.T, lbl.T
+        # img, lbl = img.T, lbl.T ### Uncomment for Vanilla ###
+        lbl = lbl.T ### Just need to transpose the labels ### ### Comment for Vanilla ###
 
-        img = np.expand_dims(img,0)
+        # img = np.expand_dims(img,0) ### Uncomment for Vanilla ###
         lbl = np.expand_dims(lbl,0)
 
         img = torch.from_numpy(img)

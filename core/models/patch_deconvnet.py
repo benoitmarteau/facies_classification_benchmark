@@ -10,7 +10,8 @@ class patch_deconvnet(nn.Module):
         self.conv_block1 = nn.Sequential(
 
             # conv1_1
-            nn.Conv2d(1, 64, 3, padding=1),
+            # nn.Conv2d(1, 64, 3, padding=1), ### Uncomment for Vanilla ###
+            nn.Conv2d(2, 64, 3, padding=1), ### Changing number of input channels over experiments ### ### Comment for Vanilla ###
             nn.BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True),
             nn.ReLU(inplace=True),
 
@@ -260,6 +261,7 @@ class patch_deconvnet(nn.Module):
 
     def forward(self, x):
         size0 = x.size()
+        # print(size0)
         conv1, indices1 = self.conv_block1(x)
         size1 = conv1.size()
         conv2, indices2 = self.conv_block2(conv1)
@@ -302,10 +304,15 @@ class patch_deconvnet(nn.Module):
             for l1, l2 in zip(features[ranges[idx][0]:ranges[idx][1]], conv_block):
                 if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
                     if i_layer == 0:
-                        l2.weight.data = ((l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] + l1.weight.data[:,
-                                                                                                     2, :,
-                                                                                                     :]) / 3.0).view(
-                            l2.weight.size())
+                        n_in_channels = l2.weight.data.size()[1] # Obtain the number of input channels
+                        if n_in_channels == 1:
+                            l2.weight.data = ((l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] +
+                                               l1.weight.data[:, 2, :, :]) / 3.0).view(l2.weight.size())
+                        else:
+                            sum_weights = (l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] + l1.weight.data[:, 2, :, :] * (n_in_channels / 3.0))
+                            for input_chan in range(n_in_channels):
+                                l2.weight.data[:, input_chan, :, :] = sum_weights.view(l2.weight[:, input_chan, :, :].size())
+                                # print(l2.weight[:, input_chan, :, :].size())
                         l2.bias.data = l1.bias.data
                         i_layer = i_layer + 1
                     else:

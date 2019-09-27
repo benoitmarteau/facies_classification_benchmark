@@ -8,9 +8,10 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from sklearn.model_selection import train_test_split
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 from torch.utils import data
 from tqdm import tqdm
+from torchsummary import summary
 
 import core.loss
 import torchvision.utils as vutils
@@ -37,7 +38,8 @@ def split_train_val(args, per_val=0.1):
     i_list = []
     horz_locations = range(0, xline-args.stride, args.stride)
     vert_locations = range(0, depth-args.stride, args.stride)
-    for i in range(iline):
+    # for i in range(0, iline ): ### Uncomment for Vanilla ###
+    for i in range(2, iline - 2): ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
         # for every inline:
         # images are references by top-left corner:
         locations = [[j, k] for j in horz_locations for k in vert_locations]
@@ -52,7 +54,8 @@ def split_train_val(args, per_val=0.1):
     x_list = []
     horz_locations = range(0, iline-args.stride, args.stride)
     vert_locations = range(0, depth-args.stride, args.stride)
-    for j in range(xline):
+    # for j in range(0, xline):  ### Uncomment for Vanilla ###
+    for j in range(2, xline - 2): ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
         # for every xline:
         # images are references by top-left corner:
         locations = [[i, k] for i in horz_locations for k in vert_locations]
@@ -89,9 +92,12 @@ def train(args):
     # Generate the train and validation sets for the model:
     split_train_val(args, per_val=args.per_val)
 
+    exp_name = "1-neightborhood-left_only"
+
+
     current_time = datetime.now().strftime('%b%d_%H%M%S')
     log_dir = os.path.join('runs', current_time +
-                           "_{}".format(args.arch))
+                           f"_{args.arch}_"+exp_name)
     writer = SummaryWriter(log_dir=log_dir)
     # Setup Augmentations
     if args.aug:
@@ -140,6 +146,7 @@ def train(args):
     model = torch.nn.DataParallel(
         model, device_ids=range(torch.cuda.device_count()))
     model = model.to(device)  # Send to GPU
+    # print(summary(model, (3, 99, 99)))
 
     # PYTROCH NOTE: ALWAYS CONSTRUCT OPTIMIZERS AFTER MODEL IS PUSHED TO GPU/CPU,
 
@@ -175,6 +182,7 @@ def train(args):
         loss_train, total_iteration = 0, 0
 
         for i, (images, labels) in enumerate(trainloader):
+            # print(images.size(),labels.size())
             image_original, labels_original = images, labels
             images, labels = images.to(device), labels.to(device)
 
@@ -195,7 +203,7 @@ def train(args):
             optimizer.step()
             total_iteration = total_iteration + 1
 
-            if (i) % 20 == 0:
+            if (i) % 10 == 0:
                 print("Epoch [%d/%d] training Loss: %.4f" %
                       (epoch + 1, args.n_epoch, loss.item()))
 

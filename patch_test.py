@@ -4,7 +4,7 @@ from os.path import join as pjoin
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tensorboardX import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 import torchvision.utils as vutils
 from core.loader.data_loader import *
@@ -13,12 +13,15 @@ from core.utils import np_to_tb
 
 
 def patch_label_2d(model, img, patch_size, stride):
-    img = torch.squeeze(img)
-    h, w = img.shape  # height and width
+    #print(img.size())
+    #img = torch.squeeze(img) ### Remove that because the img has 4 dim now ###
+    #print(img.shape)
+    _, _, h, w = img.shape  ### _(batch), _(channels), height and width  ###
 
     # Pad image with patch_size/2:
     ps = int(np.floor(patch_size/2))  # pad size
     img_p = F.pad(img, pad=(ps, ps, ps, ps), mode='constant', value=0)
+    #print(img_p.shape)
 
     num_classes = 6
     output_p = torch.zeros([1, num_classes, h+2*ps, w+2*ps])
@@ -26,12 +29,12 @@ def patch_label_2d(model, img, patch_size, stride):
     # generate output:
     for hdx in range(0, h-patch_size+ps, stride):
         for wdx in range(0, w-patch_size+ps, stride):
-            patch = img_p[hdx + ps: hdx + ps + patch_size,
-                          wdx + ps: wdx + ps + patch_size]
-            patch = patch.unsqueeze(dim=0)  # channel dim
-            patch = patch.unsqueeze(dim=0)  # batch dim
-
-            assert (patch.shape == (1, 1, patch_size, patch_size))
+            patch = img_p[:,:,hdx + ps: hdx + ps + patch_size, ### added the [:, :, ... ] because now the img is 4 dimension tensor  ###
+                          wdx + ps: wdx + ps + patch_size]     ### instead of 2 originally ###
+            #patch = patch.unsqueeze(dim=0)  # channel dim ### already has 4 dim tensor ###
+            #patch = patch.unsqueeze(dim=0)  # batch dim ### ###
+            #print(patch.size())
+            assert (patch.shape == (1, 3, patch_size, patch_size))
 
             model_output = model(patch)
             output_p[:, :, hdx + ps: hdx + ps + patch_size, wdx + ps: wdx +
@@ -62,13 +65,15 @@ def test(args):
         irange, xrange, depth = labels.shape
 
         if args.inline:
-            i_list = list(range(irange))
+            # i_list = list(range(irange)) ### Uncomment for vanilla ###
+            i_list = list(range(1, irange -1)) ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
             i_list = ['i_'+str(inline) for inline in i_list]
         else:
             i_list = []
 
         if args.crossline:
-            x_list = list(range(xrange))
+            # x_list = list(range(xrange)) ### Uncomment for vanilla ###
+            x_list = list(range(1, xrange -1)) ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
             x_list = ['x_'+str(crossline) for crossline in x_list]
         else:
             x_list = []
