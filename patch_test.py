@@ -10,13 +10,14 @@ import torchvision.utils as vutils
 from core.loader.data_loader import *
 from core.metrics import runningScore
 from core.utils import np_to_tb
+import time
 
 
-def patch_label_2d(model, img, patch_size, stride):
+def patch_label_2d(model, img, patch_size, stride, n_input=1):
     #print(img.size())
     #img = torch.squeeze(img) ### Remove that because the img has 4 dim now ###
     #print(img.shape)
-    _, _, h, w = img.shape  ### _(batch), _(channels), height and width  ###
+    _, c, h, w = img.shape  ### _(batch), _(channels), height and width  ###
 
     # Pad image with patch_size/2:
     ps = int(np.floor(patch_size/2))  # pad size
@@ -34,7 +35,7 @@ def patch_label_2d(model, img, patch_size, stride):
             #patch = patch.unsqueeze(dim=0)  # channel dim ### already has 4 dim tensor ###
             #patch = patch.unsqueeze(dim=0)  # batch dim ### ###
             #print(patch.size())
-            assert (patch.shape == (1, 3, patch_size, patch_size))
+            assert (patch.shape == (1, n_input, patch_size, patch_size))
 
             model_output = model(patch)
             output_p[:, :, hdx + ps: hdx + ps + patch_size, wdx + ps: wdx +
@@ -45,8 +46,19 @@ def patch_label_2d(model, img, patch_size, stride):
     return output
 
 
-def test(args):
+def test(args, neightborhood):
+    time0 = time.time()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f'Device is : {device}')
+
+    nborhood = np.sort(neightborhood)
+    print(f"Input channels are : {nborhood} \n")
+    print(f"Input type is : {type(nborhood)} \n")
+    exp_name = str(nborhood)
+    n_input_channels = len(nborhood)
+    print(f"Number of input channel : {n_input_channels} \n")
+
+    crop = np.max(abs(nborhood))
 
     log_dir, model_name = os.path.split(args.model_path)
     # load model:
@@ -65,15 +77,13 @@ def test(args):
         irange, xrange, depth = labels.shape
 
         if args.inline:
-            # i_list = list(range(irange)) ### Uncomment for vanilla ###
-            i_list = list(range(1, irange -1)) ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
+            i_list = list(range(crop, irange - crop)) ### Range is changing accordingly to the number of channels ###
             i_list = ['i_'+str(inline) for inline in i_list]
         else:
             i_list = []
 
         if args.crossline:
-            # x_list = list(range(xrange)) ### Uncomment for vanilla ###
-            x_list = list(range(1, xrange -1)) ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
+            x_list = list(range(crop, xrange - crop)) ### Range is changing accordingly to the number of channels ###
             x_list = ['x_'+str(crossline) for crossline in x_list]
         else:
             x_list = []
@@ -87,7 +97,9 @@ def test(args):
 
         test_set = section_loader(is_transform=True,
                                   split=split,
-                                  augmentations=None)
+                                  augmentations=None,
+                                  neightbor_channels=nborhood)
+
         n_classes = test_set.n_classes
 
         test_loader = data.DataLoader(test_set,
@@ -101,15 +113,21 @@ def test(args):
         with torch.no_grad():  # operations inside don't track history
             model.eval()
             total_iteration = 0
+            time1 = time.time()
+            # print(f"Time to start : {round(abs(time1-time0), 2)}s\n")
             for i, (images, labels) in enumerate(test_loader):
-                print(f'split: {split}, section: {i}')
+                # time2 = time1
+                # time1 = time.time()
+                # print(f"Time for split '{split}', section {i} : {round(abs(time2-time1), 2)}s\n")
+                print(f"split: {split}, section: {i}")
                 total_iteration = total_iteration + 1
                 image_original, labels_original = images, labels
 
                 outputs = patch_label_2d(model=model,
                                          img=images,
                                          patch_size=args.train_patch_size,
-                                         stride=args.test_stride)
+                                         stride=args.test_stride,
+                                         n_input=n_input_channels)
 
                 pred = outputs.detach().max(1)[1].numpy()
                 gt = labels.numpy()
@@ -220,5 +238,9 @@ if __name__ == '__main__':
     parser.add_argument('--test_stride', nargs='?', type=int, default=10,
                         help='The size of the stride of the sliding window at test time. The smaller, the better the results, but the slower they are computed.')
 
+
     args = parser.parse_args()
-    test(args)
+
+    neightborhood = np.array([-5, 0, 5])
+
+    test(args, neightborhood)

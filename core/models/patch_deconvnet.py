@@ -2,16 +2,16 @@ import torch.nn as nn
 
 class patch_deconvnet(nn.Module):
 
-    def __init__(self, n_classes=4, learned_billinear=False):
+    def __init__(self, n_classes=4, n_input=1, learned_billinear=False):
         super(patch_deconvnet, self).__init__()
         self.learned_billinear = learned_billinear
         self.n_classes = n_classes
+        self.n_input = n_input
         self.unpool = nn.MaxUnpool2d(2, stride=2)
         self.conv_block1 = nn.Sequential(
 
             # conv1_1
-            # nn.Conv2d(1, 64, 3, padding=1), ### Uncomment for Vanilla ###
-            nn.Conv2d(2, 64, 3, padding=1), ### Changing number of input channels over experiments ### ### Comment for Vanilla ###
+            nn.Conv2d(self.n_input, 64, 3, padding=1),
             nn.BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True),
             nn.ReLU(inplace=True),
 
@@ -304,14 +304,11 @@ class patch_deconvnet(nn.Module):
             for l1, l2 in zip(features[ranges[idx][0]:ranges[idx][1]], conv_block):
                 if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
                     if i_layer == 0:
-                        n_in_channels = l2.weight.data.size()[1] # Obtain the number of input channels
-                        if n_in_channels == 1:
-                            l2.weight.data = ((l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] +
-                                               l1.weight.data[:, 2, :, :]) / 3.0).view(l2.weight.size())
-                        else:
-                            sum_weights = (l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] + l1.weight.data[:, 2, :, :] * (n_in_channels / 3.0))
-                            for input_chan in range(n_in_channels):
-                                l2.weight.data[:, input_chan, :, :] = sum_weights.view(l2.weight[:, input_chan, :, :].size())
+                        sum_weights = (l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] +
+                                       l1.weight.data[:, 2, :, :] * (self.n_input / 3.0))
+                        for input_chan in range(self.n_input):
+                            l2.weight.data[:, input_chan, :, :] = \
+                                sum_weights.view(l2.weight[:, input_chan, :, :].shape)
                                 # print(l2.weight[:, input_chan, :, :].size())
                         l2.bias.data = l1.bias.data
                         i_layer = i_layer + 1
@@ -325,15 +322,16 @@ class patch_deconvnet(nn.Module):
 
 class patch_deconvnet_skip(nn.Module):
 
-    def __init__(self, n_classes=4, learned_billinear=False):
+    def __init__(self, n_classes=4, learned_billinear=False, n_input=1):
         super(patch_deconvnet_skip, self).__init__()
         self.learned_billinear = learned_billinear
         self.n_classes = n_classes
+        self.n_input = n_input
         self.unpool = nn.MaxUnpool2d(2, stride=2)
         self.conv_block1 = nn.Sequential(
 
             # conv1_1
-            nn.Conv2d(1, 64, 3, padding=1),
+            nn.Conv2d(self.n_input, 64, 3, padding=1),
             nn.BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True),
             nn.ReLU(inplace=True),
 
@@ -625,10 +623,12 @@ class patch_deconvnet_skip(nn.Module):
             for l1, l2 in zip(features[ranges[idx][0]:ranges[idx][1]], conv_block):
                 if isinstance(l1, nn.Conv2d) and isinstance(l2, nn.Conv2d):
                     if i_layer == 0:
-                        l2.weight.data = ((l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] + l1.weight.data[:,
-                                                                                                     2, :,
-                                                                                                     :]) / 3.0).view(
-                            l2.weight.size())
+                        sum_weights = (l1.weight.data[:, 0, :, :] + l1.weight.data[:, 1, :, :] +
+                                       l1.weight.data[:, 2, :, :] * (self.n_input / 3.0))
+                        for input_chan in range(self.n_input):
+                            l2.weight.data[:, input_chan, :, :] = \
+                                sum_weights.view(l2.weight[:, input_chan, :, :].shape)
+                            # print(l2.weight[:, input_chan, :, :].size())
                         l2.bias.data = l1.bias.data
                         i_layer = i_layer + 1
                     else:

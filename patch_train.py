@@ -28,18 +28,20 @@ torch.manual_seed(2019)
 if torch.cuda.is_available(): torch.cuda.manual_seed_all(2019)
 np.random.seed(seed=2019)
 
-def split_train_val(args, per_val=0.1):
+def split_train_val(args, per_val=0.1, nb=np.array([0])):
+    crop = np.max(abs(nb))
     # create inline and crossline pacthes for training and validation:
     loader_type = 'patch'
     labels = np.load(pjoin('data', 'train', 'train_labels.npy'))
     iline, xline, depth = labels.shape
 
+    print(f"Range of inlines : [{crop}, {iline-crop}] \n")
+    print(f"Range of crosslines : [{crop}, {xline-crop}] \n")
     # INLINE PATCHES: ------------------------------------------------
     i_list = []
     horz_locations = range(0, xline-args.stride, args.stride)
     vert_locations = range(0, depth-args.stride, args.stride)
-    # for i in range(0, iline ): ### Uncomment for Vanilla ###
-    for i in range(2, iline - 2): ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
+    for i in range(crop, iline - crop): ### Range is changing accordingly to the number of channels ###
         # for every inline:
         # images are references by top-left corner:
         locations = [[j, k] for j in horz_locations for k in vert_locations]
@@ -54,8 +56,7 @@ def split_train_val(args, per_val=0.1):
     x_list = []
     horz_locations = range(0, iline-args.stride, args.stride)
     vert_locations = range(0, depth-args.stride, args.stride)
-    # for j in range(0, xline):  ### Uncomment for Vanilla ###
-    for j in range(2, xline - 2): ### Range is changing accordingly to the number of channels ### ### Comment for Vanilla ###
+    for j in range(crop, xline - crop): ### Range is changing accordingly to the number of channels ###
         # for every xline:
         # images are references by top-left corner:
         locations = [[i, k] for i in horz_locations for k in vert_locations]
@@ -86,15 +87,20 @@ def split_train_val(args, per_val=0.1):
     file_object.close()
 
 
-def train(args):
+def train(args, neightborhood):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # Generate the train and validation sets for the model:
-    split_train_val(args, per_val=args.per_val)
+    print(f'Device is : {device}')
 
-    nborhood = args.neightborhood
+    nborhood = np.sort(neightborhood)
+    print(f"Input channels are : {nborhood} \n")
+    print(f"Input type is : {type(nborhood)} \n")
     exp_name = str(nborhood)
+    n_input_channels = len(nborhood)
+    print(f"Number of input channel : {n_input_channels} \n")
 
+    # Generate the train and validation sets for the model:
+    split_train_val(args, per_val=args.per_val, nb=nborhood)
 
 
     current_time = datetime.now().strftime('%b%d_%H%M%S')
@@ -112,13 +118,15 @@ def train(args):
                              split='train',
                              stride=args.stride,
                              patch_size=args.patch_size,
-                             augmentations=data_aug)
+                             augmentations=data_aug,
+                             neightbor_channels=nborhood)
 
     # Without Augmentation:
     val_set = patch_loader(is_transform=True,
                            split='val',
                            stride=args.stride,
-                           patch_size=args.patch_size)
+                           patch_size=args.patch_size,
+                           neightbor_channels=nborhood)
 
     n_classes = train_set.n_classes
 
@@ -142,7 +150,7 @@ def train(args):
         else:
             print("No checkpoint found at '{}'".format(args.resume))
     else:
-        model = get_model(args.arch, args.pretrained, n_classes)
+        model = get_model(args.arch, args.pretrained, n_classes, n_input_channels)
 
     # Use as many GPUs as we can
     model = torch.nn.DataParallel(
@@ -205,7 +213,7 @@ def train(args):
             optimizer.step()
             total_iteration = total_iteration + 1
 
-            if (i) % 10 == 0:
+            if (i) % 20 == 0:
                 print("Epoch [%d/%d] training Loss: %.4f" %
                       (epoch + 1, args.n_epoch, loss.item()))
 
@@ -340,7 +348,7 @@ def train(args):
                 if score['Mean IoU: '] >= best_iou:
                     best_iou = score['Mean IoU: ']
                     model_dir = os.path.join(
-                        log_dir, f"{args.arch}_model.pkl")
+                        log_dir, f"{args.arch}_model_{epoch+1}.pkl")
                     torch.save(model, model_dir)
 
         else:  # validation is turned off:
@@ -378,8 +386,10 @@ if __name__ == '__main__':
                         help='Whether to use data augmentation.')
     parser.add_argument('--class_weights', nargs='?', type=bool, default=False,
                         help='Whether to use class weights to reduce the effect of class imbalance')
-    parser.add_argument('--neightborhood', nargs='?', type=np.array, default=[-1, 0, 1],
-                        help='Choose which neighhtborhood will be added as channels')
 
     args = parser.parse_args()
-    train(args)
+
+    # neightborhood = np.array([0])
+    neightborhood = np.array([-1, 0, 1])
+
+    train(args, neightborhood)

@@ -8,32 +8,36 @@ import matplotlib.pyplot as plt
 
 from torch.utils import data
 
+
 class patch_loader(data.Dataset):
     """
         Data loader for the patch-based deconvnet
     """
-    def __init__(self, split='train', stride=30 ,patch_size=99, is_transform=True,
-                 augmentations=None):
+
+    def __init__(self, split='train', stride=30, patch_size=99, is_transform=True,
+                 augmentations=None, neightbor_channels=np.array([0])):
         self.root = 'data/'
         self.split = split
         self.is_transform = is_transform
         self.augmentations = augmentations
-        self.n_classes = 6 
-        self.mean = 0.000941 # average of the training data  
+        self.n_classes = 6
+        self.mean = 0.000941  # average of the training data
         self.patches = collections.defaultdict(list)
         self.patch_size = patch_size
         self.stride = stride
+        self.neightbor_channels = neightbor_channels
+        self.n_input = len(self.neightbor_channels)
 
-        if 'test' not in self.split: 
+        if 'test' not in self.split:
             # Normal train/val mode
-            self.seismic = self.pad_volume(np.load(pjoin('data','train','train_seismic.npy')))
-            self.labels = self.pad_volume(np.load(pjoin('data','train','train_labels.npy')))
+            self.seismic = self.pad_volume(np.load(pjoin('data', 'train', 'train_seismic.npy')))
+            self.labels = self.pad_volume(np.load(pjoin('data', 'train', 'train_labels.npy')))
         elif 'test1' in self.split:
-            self.seismic = np.load(pjoin('data','test_once','test1_seismic.npy'))
-            self.labels = np.load(pjoin('data','test_once','test1_labels.npy'))
+            self.seismic = np.load(pjoin('data', 'test_once', 'test1_seismic.npy'))
+            self.labels = np.load(pjoin('data', 'test_once', 'test1_labels.npy'))
         elif 'test2' in self.split:
-            self.seismic = np.load(pjoin('data','test_once','test2_seismic.npy'))
-            self.labels = np.load(pjoin('data','test_once','test2_labels.npy'))
+            self.seismic = np.load(pjoin('data', 'test_once', 'test2_seismic.npy'))
+            self.labels = np.load(pjoin('data', 'test_once', 'test2_labels.npy'))
         else:
             raise ValueError('Unknown split.')
 
@@ -50,19 +54,18 @@ class patch_loader(data.Dataset):
             # We are in test mode. Only read the given split. The other one might not 
             # be available. 
             path = pjoin('data', 'splits', 'patch_' + split + '.txt')
-            file_list = tuple(open(path,'r'))
+            file_list = tuple(open(path, 'r'))
             # patch_list = [id_.rstrip() for id_ in patch_list]
             self.patches[split] = patch_list
         else:
             raise ValueError('Unknown split.')
 
-    def pad_volume(self,volume):
+    def pad_volume(self, volume):
         '''
         Only used for train/val!! Not test.
         '''
         assert 'test' not in self.split, 'There should be no padding for test time!'
-        return np.pad(volume,pad_width=self.patch_size,mode='constant', constant_values=255)
-        
+        return np.pad(volume, pad_width=self.patch_size, mode='constant', constant_values=255)
 
     def __len__(self):
         return len(self.patches[self.split])
@@ -73,48 +76,54 @@ class patch_loader(data.Dataset):
         direction, idx, xdx, ddx = patch_name.split(sep='_')
 
         shift = (self.patch_size if 'test' not in self.split else 0)
-        idx, xdx, ddx = int(idx)+shift, int(xdx)+shift, int(ddx)+shift
+        idx, xdx, ddx = int(idx) + shift, int(xdx) + shift, int(ddx) + shift
 
         if direction == 'i':
-            # im = self.seismic[idx, xdx:xdx + self.patch_size, ddx:ddx + self.patch_size] ### Uncomment for Vanilla ###
-            im = self.seismic[idx-1:idx+1,xdx:xdx+self.patch_size,ddx:ddx+self.patch_size] ### For k-neightborhood ### ### Comment for Vanilla ###
-            im = np.swapaxes(im, 1, 2) ### Transpose ### ### Comment for Vanilla ###
-            lbl = self.labels[idx, xdx:xdx+self.patch_size,ddx:ddx+self.patch_size]
+            # if len(self.neightbor_channels) == 1: #that if is not necessary, but here for test
+            #     im = self.seismic[idx + self.neightbor_channels[0], xdx:xdx + self.patch_size, ddx:ddx + self.patch_size]
+            # else:
+            im = self.seismic[idx + self.neightbor_channels, xdx:xdx + self.patch_size,
+                 ddx:ddx + self.patch_size]  ### For k-neightborhood ###
+            im = np.swapaxes(im, 1, 2)  ### Transpose ###
+            lbl = self.labels[idx, xdx:xdx + self.patch_size, ddx:ddx + self.patch_size]
         elif direction == 'x':
-            # im = self.seismic[idx: idx + self.patch_size, xdx, ddx:ddx + self.patch_size] ### Uncomment for Vanilla ###
-            im = self.seismic[idx: idx+self.patch_size, xdx-1:xdx+1, ddx:ddx+self.patch_size] ### For k-neightborhood ### ### Comment for Vanilla ###
-            im = np.swapaxes(im, 0, 1) ### Comment for Vanilla ###
-            im = np.swapaxes(im, 1, 2) ### Transpose ### ### Comment for Vanilla ###
-            lbl = self.labels[idx: idx+self.patch_size, xdx, ddx:ddx+self.patch_size]
+            # if len(self.neightbor_channels) == 1:
+            #     im = self.seismic[idx: idx + self.patch_size, xdx, ddx:ddx + self.patch_size]
+            # else:
+            im = self.seismic[idx: idx + self.patch_size, self.neightbor_channels + xdx,
+                 ddx:ddx + self.patch_size]  ### For k-neightborhood ###
+            im = np.swapaxes(im, 0, 1)
+            im = np.swapaxes(im, 1, 2)  ### Transpose ### ###
+            lbl = self.labels[idx: idx + self.patch_size, xdx, ddx:ddx + self.patch_size]
         if self.augmentations is not None:
             im, lbl = self.augmentations(im, lbl)
-            
+
         if self.is_transform:
             im, lbl = self.transform(im, lbl)
         return im, lbl
 
-
     def transform(self, img, lbl):
         img -= self.mean
 
-        # to be in the BxCxHxW that PyTorch uses: 
-        # img, lbl = img.T, lbl.T ### Uncomment for Vanilla ###
-        lbl = lbl.T #Just transpose label (already transposed images) ### Comment for Vanilla ###
+        # to be in the BxCxHxW that PyTorch uses:
+        # if self.n_input == 1:
+        #     img, lbl = img.T, lbl.T
+        #     img = np.expand_dims(img, 0)
+        #     lbl = np.expand_dims(lbl, 0)
 
-        # img = np.expand_dims(img,0) ### Uncomment for Vanilla ###
+        lbl = lbl.T # Just transpose label (already transposed images)
         lbl = np.expand_dims(lbl, 0)
 
         img = torch.from_numpy(img)
         img = img.float()
         lbl = torch.from_numpy(lbl)
         lbl = lbl.long()
-                
+
         return img, lbl
 
     def get_seismic_labels(self):
-        return np.asarray([ [69,117,180], [145,191,219], [224,243,248], [254,224,144], [252,141,89],
-                          [215,48,39]])
-
+        return np.asarray([[69, 117, 180], [145, 191, 219], [224, 243, 248], [254, 224, 144], [252, 141, 89],
+                           [215, 48, 39]])
 
     def decode_segmap(self, label_mask, plot=False):
         """Decode segmentation class labels into a color image
@@ -144,31 +153,34 @@ class patch_loader(data.Dataset):
         else:
             return rgb
 
-        
+
 class section_loader(data.Dataset):
     """
         Data loader for the section-based deconvnet
     """
+
     def __init__(self, split='train', is_transform=True,
-                 augmentations=None):
+                 augmentations=None, neightbor_channels=np.array([0])):
         self.root = 'data/'
         self.split = split
         self.is_transform = is_transform
         self.augmentations = augmentations
-        self.n_classes = 6 
-        self.mean = 0.000941 # average of the training data  
+        self.n_classes = 6
+        self.mean = 0.000941  # average of the training data
         self.sections = collections.defaultdict(list)
+        self.neightbor_channels = neightbor_channels
+        self.n_input = len(self.neightbor_channels)
 
-        if 'test' not in self.split: 
+        if 'test' not in self.split:
             # Normal train/val mode
-            self.seismic = np.load(pjoin('data','train','train_seismic.npy'))
-            self.labels = np.load(pjoin('data','train','train_labels.npy'))
+            self.seismic = np.load(pjoin('data', 'train', 'train_seismic.npy'))
+            self.labels = np.load(pjoin('data', 'train', 'train_labels.npy'))
         elif 'test1' in self.split:
-            self.seismic = np.load(pjoin('data','test_once','test1_seismic.npy'))
-            self.labels = np.load(pjoin('data','test_once','test1_labels.npy'))
+            self.seismic = np.load(pjoin('data', 'test_once', 'test1_seismic.npy'))
+            self.labels = np.load(pjoin('data', 'test_once', 'test1_labels.npy'))
         elif 'test2' in self.split:
-            self.seismic = np.load(pjoin('data','test_once','test2_seismic.npy'))
-            self.labels = np.load(pjoin('data','test_once','test2_labels.npy'))
+            self.seismic = np.load(pjoin('data', 'test_once', 'test2_seismic.npy'))
+            self.labels = np.load(pjoin('data', 'test_once', 'test2_labels.npy'))
         else:
             raise ValueError('Unknown split.')
 
@@ -185,12 +197,11 @@ class section_loader(data.Dataset):
             # We are in test mode. Only read the given split. The other one might not 
             # be available. 
             path = pjoin('data', 'splits', 'section_' + split + '.txt')
-            file_list = tuple(open(path,'r'))
+            file_list = tuple(open(path, 'r'))
             file_list = [id_.rstrip() for id_ in file_list]
             self.sections[split] = file_list
         else:
             raise ValueError('Unknown split.')
-
 
     def __len__(self):
         return len(self.sections[self.split])
@@ -201,46 +212,39 @@ class section_loader(data.Dataset):
         direction, number = section_name.split(sep='_')
 
         if direction == 'i':
-            # im = self.seismic[int(number), :, :] ### Uncomment for Vanilla ###
-            im = self.seismic[int(number)-1:int(number)+2,:,:] ### add more channels ### ### Comment for Vanilla ###
-            im = np.swapaxes(im, 1, 2)  ### Transpose ### ### Comment for Vanilla ###
-            lbl = self.labels[int(number),:,:]
+            im = self.seismic[int(number) + self.neightbor_channels, :, :]
+            im = np.swapaxes(im, 1, 2)  ### Transpose ###
+            lbl = self.labels[int(number), :, :]
         elif direction == 'x':
-            # im = self.seismic[:, int(number), :] ### Uncomment for Vanilla ###
-            im = self.seismic[:,int(number)-1:int(number)+2,:] ### add more channels ### ### Comment for Vanilla ###
-            lbl = self.labels[:,int(number),:]
-            im = np.swapaxes(im, 0, 1) ### Put the number of channels first ### ### Comment for Vanilla ###
-            im = np.swapaxes(im, 1, 2)  ### Transpose ### ### Comment for Vanilla ###
-        
+            im = self.seismic[:, self.neightbor_channels + int(number), :]  ### For k-neightborhood ###
+            im = np.swapaxes(im, 0, 1)
+            im = np.swapaxes(im, 1, 2)  ### Transpose ### ###
+            lbl = self.labels[:, int(number), :]
+
         if self.augmentations is not None:
             im, lbl = self.augmentations(im, lbl)
-            
+
         if self.is_transform:
             im, lbl = self.transform(im, lbl)
         return im, lbl
 
-
     def transform(self, img, lbl):
         img -= self.mean
 
-        # to be in the BxCxHxW that PyTorch uses: 
-        # img, lbl = img.T, lbl.T ### Uncomment for Vanilla ###
-        lbl = lbl.T ### Just need to transpose the labels ### ### Comment for Vanilla ###
+        # to be in the BxCxHxW that PyTorch uses:
 
-        # img = np.expand_dims(img,0) ### Uncomment for Vanilla ###
-        lbl = np.expand_dims(lbl,0)
+        lbl = lbl.T # Just transpose label (already transposed images)
+        lbl = np.expand_dims(lbl, 0)
 
         img = torch.from_numpy(img)
         img = img.float()
         lbl = torch.from_numpy(lbl)
         lbl = lbl.long()
-                
+
         return img, lbl
-
     def get_seismic_labels(self):
-        return np.asarray([ [69,117,180], [145,191,219], [224,243,248], [254,224,144], [252,141,89],
-                          [215,48,39]])
-
+        return np.asarray([[69, 117, 180], [145, 191, 219], [224, 243, 248], [254, 224, 144], [252, 141, 89],
+                           [215, 48, 39]])
 
     def decode_segmap(self, label_mask, plot=False):
         """Decode segmentation class labels into a color image
@@ -269,4 +273,3 @@ class section_loader(data.Dataset):
             plt.show()
         else:
             return rgb
-        
